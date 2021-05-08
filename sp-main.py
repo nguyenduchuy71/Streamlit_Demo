@@ -1,82 +1,56 @@
 import streamlit as st
-import pandas as pd
-import base64
-import matplotlib.pyplot as plt
-import numpy as np
+from datetime import date
 import yfinance as yf
+from fbprophet import Prophet
+from fbprophet.plot import plot_plotly
+from plotly import graph_objs as go
+ 
 
-st.title('S&P 500 App')
+START="2018-01-01"
+TODAY=date.today().strftime("%Y-%m-%d")
 
-st.markdown("""
-This app retrieves the list of the **S&P 500** (from Wikipedia) and its corresponding **stock closing price** (year-to-date)!
-* **Python libraries:** base64, pandas, streamlit, yfinance, numpy, matplotlib
-* **Data source:** [Wikipedia](https://en.wikipedia.org/wiki/List_of_S%26P_500_companies).
-""")
+st.title('Stock prediction App')
+stocks=("GOOG","GME","BTC-USD","GOLD")
+selected_stocks=st.selectbox("Select dataset fro prediction",stocks)
+n_years=st.slider("Year of prediction:",1,4)
+period=n_years*365
 
-st.sidebar.header('User Input Features')
-
-# Web scraping of S&P 500 data
-#
 @st.cache
-def load_data():
-    url = 'https://en.wikipedia.org/wiki/List_of_S%26P_500_companies'
-    html = pd.read_html(url, header = 0)
-    df = html[0]
-    return df
+def load_data(ticker):
+    data=yf.download(ticker,START,TODAY)
+    data.reset_index(inplace=True)
+    return data
 
-df = load_data()
-sector = df.groupby('GICS Sector')
+data_load_state=st.text("Load data...")
+data=load_data(selected_stocks)
+data_load_state.text("Loading data... Done!")
+st.subheader("Raw data...")
+st.write(data.tail())
 
-# Sidebar - Sector selection
-sorted_sector_unique = sorted( df['GICS Sector'].unique() )
-selected_sector = st.sidebar.multiselect('Sector', sorted_sector_unique, sorted_sector_unique)
 
-# Filtering data
-df_selected_sector = df[ (df['GICS Sector'].isin(selected_sector)) ]
+def plot_raw_data():
+    fig=go.Figure()
+    fig.add_trace(go.Scatter(x=data['Date'],y=data['Open'],name="stock_open"))
+    fig.add_trace(go.Scatter(x=data['Date'],y=data['Close'], name="stock_close"))
+    fig.layout.update(title_text="Time Series Data",xaxis_rangeslider_visible=True)
+    st.plotly_chart(fig)
+    
+plot_raw_data()
 
-st.header('Display Companies in Selected Sector')
-st.write('Data Dimension: ' + str(df_selected_sector.shape[0]) + ' rows and ' + str(df_selected_sector.shape[1]) + ' columns.')
-st.dataframe(df_selected_sector)
+df_train=data[['Date','Close']]
+df_train=df_train.rename(columns={"Date":"ds","Close":"y"})
+m=Prophet()
+m.fit(df_train)
+future=m.make_future_dataframe(periods=period)
+forecast=m.predict(future)
 
-# Download S&P500 data
-# https://discuss.streamlit.io/t/how-to-download-file-in-streamlit/1806
-def filedownload(df):
-    csv = df.to_csv(index=False)
-    b64 = base64.b64encode(csv.encode()).decode()  # strings <-> bytes conversions
-    href = f'<a href="data:file/csv;base64,{b64}" download="SP500.csv">Download CSV File</a>'
-    return href
+st.subheader('Forecast data')
+st.write(forecast.tail())
 
-st.markdown(filedownload(df_selected_sector), unsafe_allow_html=True)
+st.write('Forecast data')
+fig1=plot_plotly(m,forecast)
+st.plotly_chart(fig1)
 
-# https://pypi.org/project/yfinance/
-
-data = yf.download(
-        tickers = list(df_selected_sector[:10].Symbol),
-        period = "ytd",
-        interval = "1d",
-        group_by = 'ticker',
-        auto_adjust = True,
-        prepost = True,
-        threads = True,
-        proxy = None
-    )
-
-# Plot Closing Price of Query Symbol
-def price_plot(symbol):
-  df = pd.DataFrame(data[symbol].Close)
-  df['Date'] = df.index
-  fig = plt.figure()
-  plt.fill_between(df.Date, df.Close, color='skyblue', alpha=0.3)
-  plt.plot(df.Date, df.Close, color='skyblue', alpha=0.8)
-  plt.xticks(rotation=90)
-  plt.title(symbol, fontweight='bold')
-  plt.xlabel('Date', fontweight='bold')
-  plt.ylabel('Closing Price', fontweight='bold')
-  return st.pyplot(fig)
-
-num_company = st.sidebar.slider('Number of Companies', 1, 5)
-
-if st.button('Show Plots'):
-    st.header('Stock Closing Price')
-    for i in list(df_selected_sector.Symbol)[:num_company]:
-        price_plot(i)
+st.write('Forecast components')
+fig2=m.plot_components(forecast)
+st.write(fig2)
