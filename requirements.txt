@@ -1,5 +1,7 @@
 DateTime==4.3
+pystan==2.18.0.0
 fbprophet==0.7.1
 plotly==4.14.3
 streamlit==0.68.1
 yfinance==0.1.54
+
