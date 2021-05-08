@@ -1,5 +1,5 @@
-streamlit==0.81.0
-yfinance==0.1.55
+streamlit==0.81.1
+yfinance==0.1.59
 plotly==4.4.13
 fbprophet==0.7.1
-datetime
+datetime==4.3
